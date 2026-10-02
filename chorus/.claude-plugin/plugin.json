@@ -1,0 +1,22 @@
+{
+  "name": "chorus",
+  "version": "0.4.0",
+  "description": "Browse a ship's chorus cabinet with /cabinet and sync trusted slips into project memory.",
+  "author": { "name": "Groundwire Foundation" },
+  "repository": "https://github.com/gwbtc/claude-mods",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "ship": {
+      "type": "string",
+      "title": "Ship URL",
+      "description": "Where the ship that runs chorus answers HTTP.",
+      "default": "http://localhost:8080"
+    },
+    "code": {
+      "type": "string",
+      "title": "+code",
+      "description": "The ship's web login code, from +code in the Dojo.",
+      "sensitive": true
+    }
+  }
+}

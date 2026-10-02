@@ -1,0 +1,16 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "Groundwire Foundation"
+  },
+  "metadata": {
+    "description": "Claude Code mods from the Groundwire Foundation."
+  },
+  "plugins": [
+    {
+      "name": "chorus",
+      "source": "./chorus",
+      "description": "Browse a ship's chorus cabinet with /cabinet and sync trusted slips into project memory."
+    }
+  ]
+}
