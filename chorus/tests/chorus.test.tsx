@@ -93,28 +93,6 @@ describe('sync', () => {
     expect(here.files.get(`${MEMORY}/chorus/notes/foo.md`)).toContain('Foo, revised.')
   })
 
-  test("the daemon's config moves over: cookie to the jar, host by name", async ($, on) => {
-    const here = world(on, {
-      slips: SLIPS,
-      files: {
-        [CONFIG]: JSON.stringify({
-          ship: SHIP,
-          cookie: COOKIE,
-          memory: MEMORY,
-          drawers: [{ path: '/projects/chorus', who: null }],
-        }),
-      },
-    })
-    await $.session.start(START)
-    expect(JSON.parse(here.files.get(CONFIG) ?? '')).toEqual({
-      ship: SHIP,
-      drawers: [{ path: '/projects/chorus', who: [HOST] }],
-    })
-    expect(JSON.parse(here.files.get(JAR) ?? '')).toEqual({ [SHIP]: COOKIE })
-    expect(here.files.has(`${MEMORY}/chorus/projects/chorus/todo.md`)).toBe(true)
-    expect(here.files.has(`${MEMORY}/chorus/projects/chorus/plan.md`)).toBe(false)
-  })
-
   test('a refused login says so once and writes nothing', { options: { ship: SHIP, code: 'wrong' } }, async ($, on) => {
     const here = world(on, {
       slips: SLIPS,

@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from 'claude-code/testing'
 
-import { adopt, drawerFor, isTrusted, parse, standing, tidy, trust, untrust } from '../hooks/config'
+import { drawerFor, isTrusted, parse, standing, tidy, trust, untrust } from '../hooks/config'
 import { describe as summarize, mergeIndex, plan, render, rewriteLinks, HEADING, NOTE } from '../hooks/memory'
 import type { Entry } from '../hooks/memory'
 import { foreshorten, nameOf, names, show } from '../hooks/nym'
@@ -45,26 +45,19 @@ describe('config', () => {
     expect(isTrusted(open, { ship: '~bus', nym: null })).toBe(false)
   })
 
-  test("the daemon's config gives up its cookie and names the host", () => {
-    const old = JSON.stringify({
+  test('a config reads back with its paths and urls trimmed', () => {
+    const text = JSON.stringify({
       ship: 'http://localhost:8080/',
-      cookie: 'urbauth-~zod=0v1',
-      memory: '/somewhere',
-      drawers: [
-        { path: '/projects/chorus', who: null },
-        { path: '/notes/', who: ['..abet.baboon'] },
-      ],
+      drawers: [{ path: '/notes/', who: ['..abet.baboon', 7] }, { path: '/a' }],
     })
-    const { config, legacy } = parse(old)
-    expect(legacy).toEqual({ ship: 'http://localhost:8080', cookie: 'urbauth-~zod=0v1' })
-    expect(adopt(config, '~zod')).toEqual({
+    expect(parse(text)).toEqual({
       ship: 'http://localhost:8080',
       drawers: [
-        { path: '/projects/chorus', who: ['~zod'] },
-        { path: '/notes', who: ['~zod', '..abet.baboon'] },
+        { path: '/notes', who: ['..abet.baboon'] },
+        { path: '/a', who: [] },
       ],
     })
-    expect(parse('{"drawers":[{"path":"/a","who":[]}]}').legacy).toBe(null)
+    expect(parse('{}')).toEqual({ drawers: [] })
   })
 
   const zod = { ship: '~zod', nym: null }
@@ -198,9 +191,10 @@ describe('memory', () => {
   })
 
   test("the index keeps claude's lines and replaces ours", () => {
-    const daemonNote = NOTE.replace('the `chorus` plugin', '`chorus`')
+    // a note an older version worded otherwise is still ours
+    const oldNote = NOTE.replace('the `chorus` plugin', '`chorus`')
     const old =
-      `# Memory Index\n\n- [a](a.md) — mine\n\n${HEADING}\n\n${daemonNote}` +
+      `# Memory Index\n\n- [a](a.md) — mine\n\n${HEADING}\n\n${oldNote}` +
       '\n\n- [old](chorus/old.md) — stale\n- [b](b.md) — appended by claude\n'
     const section = `${HEADING}\n\n${NOTE}\n\n- [new](chorus/new.md) — fresh\n`
     expect(mergeIndex(old, section)).toBe(

@@ -331,8 +331,8 @@ export function mergeIndex(old: string, section: string): string {
   return out
 }
 
-// our own note under the heading, as this plugin or the daemon before
-// it wrote it
+// our own note under the heading, however the version that wrote it
+// worded the rest
 function isNote(line: string): boolean {
   return line.startsWith("Copies of slips from the ship's chorus cabinet, synced by")
 }

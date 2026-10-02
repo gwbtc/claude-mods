@@ -15,7 +15,6 @@ import {
   DIR,
   FILE,
   JAR,
-  adopt,
   codeFor,
   holds,
   parse,
@@ -144,19 +143,11 @@ async function keep($: EngineInterface, url: string, cookie: string | null): Pro
 }
 
 // the project's config, or one with no drawers for a project that has
-// none. a config the sync daemon left gives up its cookie to the jar
-// and takes the host by name into every drawer
+// none
 async function readConfig($: EngineInterface): Promise<Config> {
   const path = await configPath($)
-  if (!(await $.fs.exists(path))) return { drawers: [] }
-  const { config, legacy } = parse(await $.fs.read(path))
-  if (legacy === null) return config
 
-  const adopted = adopt(config, shipOf(legacy.cookie))
-  if ((await cookies($))[legacy.ship] === undefined) await keep($, legacy.ship, legacy.cookie)
-  await $.fs.write(path, serialize(adopted))
-
-  return adopted
+  return (await $.fs.exists(path)) ? parse(await $.fs.read(path)) : { drawers: [] }
 }
 
 async function writeConfig($: EngineInterface, config: Config): Promise<void> {

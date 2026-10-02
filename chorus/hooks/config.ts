@@ -25,32 +25,14 @@ export type Config = {
   drawers: Drawer[]
 }
 
-// what the sync daemon left in the same file: the cookie, and drawers
-// that took the host's slips unasked
-export type Legacy = {
-  ship: string
-  cookie: string
-}
-
-export type Parsed = {
-  config: Config
-  legacy: Legacy | null
-}
-
-// read a config file's text. the daemon's shape comes back with
-// .legacy set, its drawers still as written: +adopt names the host
-export function parse(text: string): Parsed {
+// read a config file's text
+export function parse(text: string): Config {
   const raw: unknown = JSON.parse(text)
   if (!isRecord(raw)) throw new Error('config is not an object')
   const drawers = Array.isArray(raw.drawers) ? raw.drawers.map(parseDrawer) : []
   const ship = typeof raw.ship === 'string' ? trimUrl(raw.ship) : undefined
-  const config: Config = ship === undefined ? { drawers } : { ship, drawers }
-  const legacy =
-    typeof raw.cookie === 'string' && ship !== undefined
-      ? { ship, cookie: raw.cookie }
-      : null
 
-  return { config, legacy }
+  return ship === undefined ? { drawers } : { ship, drawers }
 }
 
 function parseDrawer(raw: unknown): Drawer {
@@ -62,17 +44,6 @@ function parseDrawer(raw: unknown): Drawer {
     : []
 
   return { path: trimPath(raw.path), who }
-}
-
-// the daemon synced the host's slips from every drawer without being
-// told to. name the host in each, so the same slips sync
-export function adopt(config: Config, host: string): Config {
-  const drawers = config.drawers.map(drawer => ({
-    path: drawer.path,
-    who: drawer.who.includes(host) ? drawer.who : [host, ...drawer.who],
-  }))
-
-  return { ...config, drawers }
 }
 
 export function serialize(config: Config): string {
