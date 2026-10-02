@@ -18,7 +18,7 @@ In Claude Code:
 
 ## chorus
 
-The mod keeps chosen drawers of a ship's cabinet in a Claude Code project's memory folder, and gives you `/cabinet` to choose them. It replaces the `chorus` sync daemon that the chorus desk used to carry.
+The mod keeps chosen drawers of a ship's cabinet in a Claude Code project's memory folder, and gives you `/cabinet` to choose them.
 
 The ship must run the `%chorus` agent. To publish slips, Claude also needs the ship's [urbit-mcp](https://github.com/gwbtc/urbit-mcp) server; the mod itself only reads.
 
@@ -80,13 +80,6 @@ A slip syncs if the deepest drawer holding its path names its author. Nobody syn
 The mod syncs when a session starts, every minute after, when `/cabinet` changes a drawer, and when Claude publishes or discards a slip. It writes each slip to `<memory>/chorus/<path>.md`, read-only, and lists them under `## Chorus (synced, read-only)` at the end of `MEMORY.md`. It denies `Edit` and `Write` on the copies. The ship holds the truth: a slip that leaves the ship, or loses its drawer, leaves the folder.
 
 Each change goes to the debug log (`claude --debug`), not to the transcript, so a slip's text never lands in Claude's context unasked.
-
-### Coming from the daemon
-
-The mod reads the daemon's `config.json` in place. On first load it moves the cookie to the cookie jar and rewrites the file: `who: null` becomes the host by `@p`, and every other drawer gains the host, since the daemon synced the host's slips unasked. Then remove the daemon's hooks:
-
-1. Delete `extraKnownMarketplaces.chorus` and `enabledPlugins["chorus@chorus"]` from `<project>/.claude/settings.local.json`.
-2. Delete `<project>/.claude/chorus/plugin`, `.claude-plugin`, `log`, `lock` and `sessions`.
 
 ## Develop
 
