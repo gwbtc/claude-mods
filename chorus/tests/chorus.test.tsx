@@ -129,9 +129,9 @@ describe('/cabinet', () => {
       const ui = await $.ui.mount({ plugin: 'chorus', surface, ...PANE })
       const rows = async () => (await ui.findAll({ type: 'Button' })).map(row => row.text)
       expect(await rows()).toEqual([
-        '❯ /notes',
-        '  /notes/foo',
+        '> /notes',
         '  /projects',
+        '  /notes/foo',
         '  /projects/chorus',
         '  /projects/chorus/plan',
         '  /projects/chorus/todo',
@@ -139,7 +139,7 @@ describe('/cabinet', () => {
       expect(await ui.find({ type: 'Text', text: 'Chorus Cabinet' })).toBeDefined()
       await ui.input({ key: 'search', text: 'pch', kind: 'change' })
       expect(await rows()).toEqual([
-        '❯ /projects/chorus',
+        '> /projects/chorus',
         '  /projects/chorus/plan',
         '  /projects/chorus/todo',
       ])
@@ -154,7 +154,7 @@ describe('/cabinet', () => {
     await open($)
     const ui = await $.ui.mount({ plugin: 'chorus', surface: 'terminal', ...PANE })
     await ui.input({ key: 'search', text: 'todo', kind: 'change' })
-    expect(await ui.find({ key: 'row:0' })).toMatchObject({ text: '❯ /projects/chorus/todo' })
+    expect(await ui.find({ key: 'row:0' })).toMatchObject({ text: '> /projects/chorus/todo' })
     expect(await ui.find({ type: 'Text', text: /ripgrep/ })).toBeDefined()
   })
 
@@ -166,12 +166,12 @@ describe('/cabinet', () => {
     await ui.input({ key: 'search', text: 'notes', kind: 'change' })
     // enter in the search field opens the selected path
     await ui.input({ key: 'search', text: 'notes' })
-    expect(await ui.find({ key: 'author:0' })).toMatchObject({ text: `❯ [ ] ${HOST}` })
+    expect(await ui.find({ key: 'author:0' })).toMatchObject({ text: `> [ ] ${HOST}` })
     expect(await ui.find({ key: 'author:1' })).toMatchObject({
       text: '  [ ] ..abet.baboon..denounce.escape',
     })
     // each author's slips, counted beside them
-    expect((await ui.findAll({ type: 'Text', text: /^1/ })).map(one => one.text)).toEqual(['1  host', '1'])
+    expect((await ui.findAll({ type: 'Text', text: /^1/ })).map(one => one.text)).toEqual(['1', '1'])
     expect(here.files.has(CONFIG)).toBe(false)
 
     // enter acts on the selected author: the host, listed first
@@ -207,7 +207,7 @@ describe('/cabinet', () => {
     expect(here.files.get(CONFIG)).toBe(config([{ path: '/projects/chorus', who: [NYM] }]))
     // from /projects they show as trusted, with where the trust sits
     await open($)
-    await ui.press({ key: 'row:2' })
+    await ui.press({ key: 'row:1' })
     expect(await ui.find({ key: 'author:1' })).toMatchObject({
       text: '  [x] ..abet.baboon..denounce.escape',
     })
@@ -221,7 +221,7 @@ describe('/cabinet', () => {
     await open($)
     await ui.press({ key: 'row:4' })
     expect(await ui.find({ key: 'author:0' })).toMatchObject({
-      text: '❯ [x] ..abet.baboon..denounce.escape',
+      text: '> [x] ..abet.baboon..denounce.escape',
     })
   })
 
@@ -243,20 +243,20 @@ describe('/cabinet', () => {
     // down aims at the first row; the search field keeps the keys
     expect(await arrow('row:0')).toMatchObject(stays)
     expect(await arrow('row:0')).toMatchObject(stays)
-    expect(await ui.find({ key: 'row:2' })).toMatchObject({ text: '❯ /projects' })
+    expect(await ui.find({ key: 'row:2' })).toMatchObject({ text: '> /notes/foo' })
     // up aims at the engine's own stop before the field
     await arrow(undefined)
-    expect(await ui.find({ key: 'row:1' })).toMatchObject({ text: '❯ /notes/foo' })
+    expect(await ui.find({ key: 'row:1' })).toMatchObject({ text: '> /projects' })
     expect(await arrow('search')).toEqual({})
     // over the authors it is the same, around a holder nobody sees
     await ui.input({ key: 'search', text: '' })
-    expect(await ui.find({ key: 'author:0' })).toMatchObject({ text: `❯ [ ] ${HOST}` })
+    expect(await ui.find({ key: 'author:0' })).toMatchObject({ text: `> [ ] ${HOST}` })
     expect(await arrow('author:0')).toMatchObject(stays)
     expect(await ui.find({ key: 'author:1' })).toMatchObject({
-      text: '❯ [ ] ..abet.baboon..denounce.escape',
+      text: '> [ ] ..abet.baboon..denounce.escape',
     })
     expect(await arrow(undefined)).toMatchObject(stays)
-    expect(await ui.find({ key: 'author:0' })).toMatchObject({ text: `❯ [ ] ${HOST}` })
+    expect(await ui.find({ key: 'author:0' })).toMatchObject({ text: `> [ ] ${HOST}` })
   })
 
   test('with no login it says what to set', async ($, on) => {

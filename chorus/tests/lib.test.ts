@@ -233,7 +233,7 @@ describe('paths', () => {
 
   test("a split folds back to the path its author published to", () => {
     expect(logical('/notes/foo/~bus')).toBe('/notes/foo')
-    expect(pathsOf(slips)).toEqual(['/notes', '/notes/foo', '/projects', '/projects/chorus', '/projects/chorus/plan'])
+    expect(pathsOf(slips)).toEqual(['/notes', '/projects', '/notes/foo', '/projects/chorus', '/projects/chorus/plan'])
     expect(authorsOf(slips, '/notes', '~zod')).toEqual([
       { ship: '~zod', slips: 1 },
       { ship: '~bus', slips: 1 },

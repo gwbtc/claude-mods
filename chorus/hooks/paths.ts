@@ -12,7 +12,8 @@ export function logical(path: string): string {
   return path[cut + 1] === '~' ? path.slice(0, cut) : path
 }
 
-// every path in the cabinet, drawers and slips alike, in order
+// every path in the cabinet, drawers and slips alike, the shortest
+// first and those of one length by their letters
 export function pathsOf(slips: readonly Placed[]): string[] {
   const all = new Set<string>()
   for (const slip of slips) {
@@ -22,7 +23,7 @@ export function pathsOf(slips: readonly Placed[]): string[] {
     }
   }
 
-  return [...all].sort()
+  return [...all].sort((a, b) => a.length - b.length || (a < b ? -1 : 1))
 }
 
 // how many slips sit at each path or under it

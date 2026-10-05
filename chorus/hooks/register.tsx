@@ -629,12 +629,12 @@ export const register: Register = (on, options) => {
                   : stand.below.length > 1
                     ? `  under ${stand.below.length} paths below`
                     : ''
-              const mark = n === now.asel ? '❯' : ' '
+              const mark = n === now.asel ? '>' : ' '
               const name = cut(`${mark} ${isTicked ? '[x]' : '[ ]'} ${show(author)}`, room)
-              const side = `${author.slips}${author.ship === held.host ? '  host' : ''}${where}`
+              const side = `${author.slips}${where}`
 
               return (
-                <Box columnGap={2}>
+                <Box columnGap={1}>
                   <Button
                     plain
                     key={`author:${n}`}
@@ -642,7 +642,7 @@ export const register: Register = (on, options) => {
                     label={name}
                     onPress={() => toggle($, options, n)}
                   />
-                  <Text dimColor>{cut(side, Math.max(0, room - Array.from(name).length - 2))}</Text>
+                  <Text dimColor>{cut(side, Math.max(0, room - Array.from(name).length - 1))}</Text>
                 </Box>
               )
             })}
@@ -692,12 +692,12 @@ export const register: Register = (on, options) => {
               const i = now.top + n
 
               return (
-                <Box columnGap={2}>
+                <Box columnGap={1}>
                   <Button
                     plain
                     key={`row:${i}`}
                     dimColor={i !== now.sel}
-                    label={cut(`${i === now.sel ? '❯' : ' '} ${path}`, room - 6)}
+                    label={cut(`${i === now.sel ? '>' : ' '} ${path}`, room - 6)}
                     onPress={() => choose($, i)}
                   />
                   <Text dimColor>{String(counts.get(path) ?? 0)}</Text>
