@@ -31,15 +31,19 @@ import { FOLDER } from './memory'
 import type { Disk } from './memory'
 import { nameOf as nameFor, show } from './nym'
 import { countsOf, filter, fuzzy, pathsOf } from './paths'
-import { Unauthorized, login, nameOf as shipOf, paths as cabinetPaths } from './ship'
+import { Unauthorized, listing, login, nameOf as shipOf } from './ship'
 import type { Fetch, Ship } from './ship'
 import { clear, nymsOf, sync } from './sync'
+import type { Seen } from './sync'
 import { ROWS, authorsAt, cut, fold, scrolled } from './view'
 
 // how often we ask the ship for the drawers again
 const POLL_MS = 60_000
 // how long a change waits for the next before the sync runs
 const SETTLE_MS = 500
+// how long the ship gets to fetch the slips we asked for before we
+// look again
+const FETCH_MS = 5000
 
 const DENY =
   'This memory is a read-only copy of a chorus slip. ' +
@@ -93,6 +97,16 @@ let isStale = false
 // /cabinet gets through or the plugin's options change
 let isRefused = false
 let pending: { cancel: () => void } | undefined
+// the early look at what the ship has fetched
+let looking: { cancel: () => void } | undefined
+// where each trusted slip stood at the last sync
+const seen: Seen = new Map()
+// the slips the ship lacked when we last looked again early. we look
+// early only while that number moves: a ship that cannot reach an
+// author is left to the poll
+let awaited = 0
+// counts the eyre channels we open, so no two share a name
+let channels = 0
 // counts the searches, so a slow one cannot overwrite a later one
 let searches = 0
 // /cabinet is still asking the ship: the prompt holds the keys until
@@ -280,13 +294,24 @@ async function run($: EngineInterface, options: PluginOptions): Promise<void> {
     const config = await readConfig($)
     const memory = await memoryDir($)
     // a project with no drawers asks the ship nothing
-    const changes =
-      config.drawers.length === 0
-        ? await clear(diskOf($), memory)
-        : await withShip($, options, config, ship =>
-            sync({ fetch: fetchOf($), ship, disk: diskOf($), memory }, config.drawers),
-          )
-    for (const line of changes ?? []) $.ui.log(line, { to: 'debug' })
+    if (config.drawers.length === 0) {
+      seen.clear()
+      awaited = 0
+      for (const line of await clear(diskOf($), memory)) $.ui.log(line, { to: 'debug' })
+    } else {
+      const now = await $.clock.now()
+      const channel = (): string => `chorus-mod-${now}-${(channels += 1)}`
+      const report = await withShip($, options, config, ship =>
+        sync({ fetch: fetchOf($), ship, disk: diskOf($), memory, now, channel }, config.drawers, seen),
+      )
+      for (const line of [...(report?.notes ?? []), ...(report?.changes ?? [])]) {
+        $.ui.log(line, { to: 'debug' })
+      }
+      // the ship is fetching: look again soon, while slips keep landing
+      const lacking = report?.lacking ?? 0
+      if (lacking > 0 && lacking !== awaited) later($, options)
+      awaited = lacking
+    }
   } catch (err) {
     // a failed login is the one thing the person must act on, so it
     // is the one thing they see. everything else goes to the debug log
@@ -308,6 +333,12 @@ async function run($: EngineInterface, options: PluginOptions): Promise<void> {
 function soon($: EngineInterface, options: PluginOptions): void {
   pending?.cancel()
   pending = $.clock.after(SETTLE_MS, () => run($, options))
+}
+
+// sync once the ship has had time to fetch what we asked for
+function later($: EngineInterface, options: PluginOptions): void {
+  looking?.cancel()
+  looking = $.clock.after(FETCH_MS, () => run($, options))
 }
 
 //  the pane
@@ -411,7 +442,7 @@ async function load($: EngineInterface, options: PluginOptions): Promise<void> {
     const got = await withShip($, options, config, async ship => {
       const fetch = fetchOf($)
       const host = shipOf(ship.cookie)
-      const slips = await cabinetPaths(fetch, ship)
+      const slips = await listing(fetch, ship, '/')
       const nyms = await nymsOf(fetch, ship, [host, ...slips.map(slip => slip.ship)])
 
       return {

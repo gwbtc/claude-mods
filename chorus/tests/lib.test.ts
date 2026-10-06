@@ -8,7 +8,7 @@ import { describe as summarize, mergeIndex, plan, render, rewriteLinks, HEADING,
 import type { Entry } from '../hooks/memory'
 import { foreshorten, nameOf, names, show } from '../hooks/nym'
 import { authorsOf, countsOf, filter, logical, pathsOf } from '../hooks/paths'
-import { BadResponse, BadSlip, Unauthorized, login, walk } from '../hooks/ship'
+import { BadResponse, BadSlip, Unauthorized, ask, listedOf, login, slipOf, walk } from '../hooks/ship'
 import type { Fetch, Slip } from '../hooks/ship'
 
 function entry(path: string, ship: string, text: string): Entry {
@@ -222,15 +222,54 @@ describe('ship', () => {
 
   test('a slip we cannot read fails the walk; an empty node does not', () => {
     const out: Slip[] = []
-    walk({ slip: null, dir: { foo: { slip, dir: {} } } }, '/notes', out)
+    walk({ slip: null, dir: { foo: { slip, dir: {} } } }, '/notes', out, slipOf)
     expect(out.map(one => one.path)).toEqual(['/notes/foo'])
     // the shape an older agent gave: an address where the fqsp belongs
     const { fqsp: _, ...old } = { ...slip, address: '/~zod/notes/foo' }
-    expect(() => walk({ slip: null, dir: { foo: { slip: old, dir: {} } } }, '/notes', [])).toThrow(BadSlip)
+    expect(() => walk({ slip: null, dir: { foo: { slip: old, dir: {} } } }, '/notes', [], slipOf)).toThrow(BadSlip)
   })
 
   test('a segment that could leave the folder fails the walk', () => {
-    expect(() => walk({ slip: null, dir: { '..': { slip, dir: {} } } }, '', [])).toThrow(BadSlip)
+    expect(() => walk({ slip: null, dir: { '..': { slip, dir: {} } } }, '', [], slipOf)).toThrow(BadSlip)
+  })
+
+  test('a listing says whether the ship holds a slip; an older agent held them all', () => {
+    const { text: _, ...stub } = slip
+    expect(listedOf({ ...stub, held: false, digest: '0v1' }, '/notes/foo')).toEqual({
+      path: '/notes/foo',
+      ship: '~zod',
+      fqsp: slip.fqsp,
+      isHeld: false,
+    })
+    expect(listedOf(slip, '/notes/foo').isHeld).toBe(true)
+    expect(() => listedOf({ ...stub, held: 'yes' }, '/notes/foo')).toThrow(BadSlip)
+  })
+
+  test('an ask pokes the agent once for each slip and closes its channel', async () => {
+    const sent: { url: string; method?: string; body?: string }[] = []
+    const fetch: Fetch = async (url, init) => {
+      sent.push({ url, method: init?.method, body: init?.body })
+
+      return { status: 204, ok: true, headers: {}, text: '' }
+    }
+    const ship = { url: 'http://ship.test', cookie: 'urbauth-~zod=0v5.cookie' }
+    await ask(fetch, ship, [], 'none')
+    expect(sent).toEqual([])
+    await ask(fetch, ship, [{ drawer: '/notes/foo', ship: '~bus' }], 'one')
+    expect(sent.map(one => [one.url, one.method])).toEqual([['http://ship.test/~/channel/one', 'PUT']])
+    expect(JSON.parse(sent[0]?.body ?? '')).toEqual([
+      {
+        id: 1,
+        action: 'poke',
+        ship: 'zod',
+        app: 'chorus',
+        mark: 'chorus-fetch',
+        json: { drawer: '/notes/foo', ships: ['~bus'] },
+      },
+      { id: 2, action: 'delete' },
+    ])
+    const refuse: Fetch = async () => ({ status: 403, ok: false, headers: {}, text: '' })
+    await expect(ask(refuse, ship, [{ drawer: '/', ship: '~bus' }], 'two')).rejects.toThrow(Unauthorized)
   })
 
   const COOKIE = 'urbauth-~zod=0v5.cookie'

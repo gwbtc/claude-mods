@@ -1,6 +1,6 @@
 {
   "name": "chorus",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Browse a ship's chorus cabinet with /cabinet and sync trusted slips into project memory.",
   "author": { "name": "Groundwire Foundation" },
   "repository": "https://github.com/gwbtc/claude-mods",

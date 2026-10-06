@@ -20,7 +20,7 @@ In Claude Code:
 
 The mod keeps chosen drawers of a ship's cabinet in a Claude Code project's memory folder, and gives you `/cabinet` to choose them.
 
-The ship must run the `%chorus` agent. To publish slips, Claude also needs the ship's [urbit-mcp](https://github.com/gwbtc/urbit-mcp) server; the mod itself only reads.
+The ship must run the `%chorus` agent. To publish slips, Claude also needs the ship's [urbit-mcp](https://github.com/gwbtc/urbit-mcp) server; the mod itself reads the cabinet and asks the ship to fetch slips, and writes nothing to it.
 
 ### Set up
 
@@ -81,7 +81,19 @@ A slip syncs if the deepest drawer holding its path names its author. Nobody syn
 
 The mod syncs when a session starts, every minute after, when `/cabinet` changes a drawer, and when Claude publishes or discards a slip. It writes each slip to `<memory>/chorus/<path>.md`, read-only, and lists them under `## Chorus (synced, read-only)` at the end of `MEMORY.md`. It denies `Edit` and `Write` on the copies. The ship holds the truth: a slip that leaves the ship, or loses its drawer, leaves the folder.
 
-Each change goes to the debug log (`claude --debug`), not to the transcript, so a slip's text never lands in Claude's context unasked.
+A ship lists another author's slip, with its path and author, before it holds the text. The pane lists every slip the ship knows of. When a trusted author's slip has no text on the ship yet, the mod pokes the agent with `%chorus-fetch`; the ship fetches the slip from its author and keeps it from then on. The mod looks again five seconds later, and keeps looking while slips arrive. A slip the ship cannot fetch is asked for again at each minute's sync. None of this shows in the session.
+
+The mechanics go to the debug log (`claude --debug`), not to the transcript, so a slip's text never lands in Claude's context unasked:
+
+| Line | Meaning |
+|---|---|
+| `held: <path> by <ship>, in the ship's cache` | the ship already had the text of a trusted slip |
+| `fetch: asked the ship for <path> from <ship>` | the mod poked `%chorus-fetch` for it |
+| `arrived: <path> from <ship>` | a slip the mod asked for now has its text |
+| `sync: 73 listed, 23 trusted, 23 held, 0 awaited, 0 asked for now` | one sync's count |
+| `<path> added`, `<path> removed` and the like | a copy in the memory folder changed |
+
+A ship whose agent predates the listing gives every slip with its text, and the mod asks it for nothing.
 
 ## Develop
 
@@ -93,4 +105,4 @@ claude --plugin-dir chorus        # load it from disk; a save reloads it
 
 The engine lays its type declarations into `chorus/.claude-plugin/types/` when it loads the mod from disk; after that, `tsc -p chorus` type-checks it.
 
-The engine follows `$` no further than the hooks module, so `hooks/register.tsx` holds everything that touches the engine. The files beside it know nothing of it, each one layer: `ship.ts` (Eyre and the agent's JSON), `config.ts` (drawers and trust), `nym.ts`, `memory.ts` (the memory folder's layout), `sync.ts` (the core), `paths.ts` and `view.ts` (the pane's arithmetic).
+The engine follows `$` no further than the hooks module, so `hooks/register.tsx` holds everything that touches the engine. The files beside it know nothing of it, each one layer: `ship.ts` (Eyre, the agent's JSON and the fetch poke), `config.ts` (drawers and trust), `nym.ts`, `memory.ts` (the memory folder's layout), `sync.ts` (the core), `paths.ts` and `view.ts` (the pane's arithmetic).

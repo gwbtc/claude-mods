@@ -104,6 +104,60 @@ describe('sync', () => {
     expect([...here.files.keys()]).toEqual([CONFIG])
   })
 
+  test('a trusted slip the ship lacks is asked for, and lands once the ship has it', { options: OPTIONS }, async ($, on) => {
+    const here = world(on, {
+      slips: {
+        '/notes/foo': { ship: HOST, text: 'Foo is ours.' },
+        '/notes/foo/~bus': { ship: BUS, text: 'Foo is theirs.', isHeld: false },
+        '/notes/bar': { ship: BUS, text: 'Bar is theirs.', isHeld: false },
+        '/notes/baz': { ship: '~nec', text: 'Baz is another\'s.', isHeld: false },
+      },
+      nyms: NYMS,
+      files: { [CONFIG]: config([{ path: '/notes', who: [HOST, BUS] }]) },
+    })
+    await $.session.start(START)
+    // one ask for each slip, at the path its author published to;
+    // nobody asks for the slip of an author nobody named
+    expect(here.asks).toEqual([
+      { drawer: '/notes/foo', ships: [BUS] },
+      { drawer: '/notes/bar', ships: [BUS] },
+    ])
+    expect(here.files.has(`${MEMORY}/chorus/notes/foo.md`)).toBe(true)
+    expect(here.files.has(`${MEMORY}/chorus/notes/bar.md`)).toBe(false)
+    expect(here.toasts).toEqual([])
+    // the ship fetched them: the next look copies them down, and asks
+    // for nothing more
+    await here.clock.advance(5000)
+    expect(here.files.get(`${MEMORY}/chorus/notes/bar.md`)).toContain('Bar is theirs.')
+    expect(here.files.get(`${MEMORY}/chorus/notes/foo/~bus.md`)).toContain('Foo is theirs.')
+    expect(here.files.has(`${MEMORY}/chorus/notes/baz.md`)).toBe(false)
+    expect(here.asks.length).toBe(2)
+    // the mechanics go to the debug log, and nowhere the person sees
+    expect(here.logs).toContain(`held: /notes/foo by ${HOST}, in the ship's cache`)
+    expect(here.logs).toContain(`fetch: asked the ship for /notes/bar from ${BUS}`)
+    expect(here.logs).toContain(`arrived: /notes/bar from ${BUS}`)
+    expect(here.logs).toContain('sync: 4 listed, 3 trusted, 1 held, 2 awaited, 2 asked for now')
+    expect(here.logs).toContain('sync: 4 listed, 3 trusted, 3 held, 0 awaited, 0 asked for now')
+  })
+
+  test('a ship that cannot fetch a slip is asked again at the poll, not sooner', { options: OPTIONS }, async ($, on) => {
+    const here = world(on, {
+      slips: { '/notes/bar': { ship: BUS, text: 'Bar is theirs.', isHeld: false } },
+      nyms: NYMS,
+      files: { [CONFIG]: config([{ path: '/notes', who: [BUS] }]) },
+    })
+    here.reaches = false
+    await $.session.start(START)
+    expect(here.asks.length).toBe(1)
+    // the early look finds nothing new and asks for nothing
+    await here.clock.advance(5000)
+    await here.clock.advance(5000)
+    expect(here.asks.length).toBe(1)
+    await here.clock.advance(50_000)
+    expect(here.asks.length).toBe(2)
+    expect(here.files.has(`${MEMORY}/chorus/notes/bar.md`)).toBe(false)
+  })
+
   test('the copies turn away an edit', { options: OPTIONS }, async ($, on) => {
     world(on, { slips: SLIPS, files: { [CONFIG]: config([{ path: '/notes', who: [HOST] }]) } })
     on('tool.call', () => ({ result: 'ran' }))

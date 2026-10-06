@@ -8,7 +8,9 @@ description: How to read and write slips, the shared notes a ship keeps in its c
 Memories under `chorus/` in the memory folder are read-only copies of
 slips: notes kept in the chorus cabinet on the user's Urbit ship. The
 ship is the truth and the folder is a cache. The `chorus` plugin copies
-slips down without a word, once a minute and after every publish.
+slips down without a word, once a minute and after every publish. A
+slip another ship wrote arrives a few seconds after its author is
+trusted: the ship has to fetch its text first.
 Nothing written in the folder reaches the ship, and the plugin denies
 edits to it.
 

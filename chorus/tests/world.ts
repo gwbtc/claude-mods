@@ -15,7 +15,8 @@ export const HOST = '~zod'
 export const COOKIE = `urbauth-${HOST}=0v5.cookie`
 export const CODE = 'lidlut-tabwed-pillex-ridrup'
 
-type Leaf = { ship: string; text: string }
+// .isHeld false is a slip the ship lists and lacks the text of
+type Leaf = { ship: string; text: string; isHeld?: boolean }
 type Tree = { slip: unknown; dir: Record<string, Tree> }
 
 export type World = {
@@ -25,14 +26,24 @@ export type World = {
   // every url asked of the ship
   asked: string[]
   toasts: string[]
+  // every line sent to the debug log
+  logs: string[]
+  // every fetch asked of the ship
+  asks: { drawer: string; ships: string[] }[]
+  // tree paths the ship is fetching: each is held at the next listing.
+  // empty .reaches and the ship fetches nothing
+  fetching: Set<string>
+  reaches: boolean
   // slips by tree path; change it and the ship answers anew
   slips: Record<string, Leaf>
   clock: MockClock
 }
 
+// the listing of every slip, or the texts of the held ones
 function treeOf(slips: Record<string, Leaf>, isBlank: boolean): Tree {
   const root: Tree = { slip: null, dir: {} }
   for (const [path, leaf] of Object.entries(slips)) {
+    if (!isBlank && leaf.isHeld === false) continue
     let node = root
     for (const segment of path.split('/').slice(1)) {
       node = node.dir[segment] ??= { slip: null, dir: {} }
@@ -44,6 +55,7 @@ function treeOf(slips: Record<string, Leaf>, isBlank: boolean): Tree {
       fqsp: `/${leaf.ship}/g/x/1/chorus//1/chorus/cabinet${logical}`,
       links: [],
       text: isBlank ? '' : leaf.text,
+      ...(isBlank ? { held: leaf.isHeld !== false, digest: '0v1' } : {}),
     }
   }
 
@@ -71,6 +83,10 @@ export function world(
     locked: new Set(),
     asked: [],
     toasts: [],
+    logs: [],
+    asks: [],
+    fetching: new Set(),
+    reaches: true,
     slips: init.slips,
     clock: mock.clock(on),
   }
@@ -83,7 +99,11 @@ export function world(
   on('session.cwd', () => ({ value: ROOT }))
   on('settings.read', () => ({ value: {} }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
-  on('ui.log', () => ({ value: undefined }))
+  on('ui.log', ($, e) => {
+    here.logs.push(e.text)
+
+    return { value: undefined }
+  })
   on('ui.toast', ($, e) => {
     here.toasts.push(e.text)
 
@@ -159,12 +179,43 @@ export function world(
         : answer(400, '<html>login</html>')
     }
     if (e.init?.headers?.cookie !== COOKIE) return answer(403, '')
+    if (e.url.startsWith(`${SHIP}/~/channel/`)) {
+      const actions = JSON.parse(e.init?.body ?? '[]') as {
+        action: string
+        ship?: string
+        app?: string
+        mark?: string
+        json?: { drawer: string; ships: string[] }
+      }[]
+      for (const one of actions) {
+        if (one.action !== 'poke') continue
+        if (one.ship !== HOST.slice(1) || one.app !== 'chorus' || one.mark !== 'chorus-fetch') {
+          return answer(400, '')
+        }
+        if (one.json === undefined) return answer(400, '')
+        here.asks.push(one.json)
+        for (const [path, leaf] of Object.entries(here.slips)) {
+          const logical = path.replace(/\/~[^/]+$/, '')
+          const isUnder = logical === one.json.drawer || logical.startsWith(`${one.json.drawer}/`)
+          if (here.reaches && isUnder && one.json.ships.includes(leaf.ship)) here.fetching.add(path)
+        }
+      }
+
+      return answer(204, '')
+    }
     const path = e.url.slice(`${SHIP}/~/scry/chorus`.length).replace(/\.json$/, '')
     if (path.startsWith('/nym/')) {
       return answer(200, JSON.stringify(init.nyms?.[path.slice('/nym/'.length)] ?? null))
     }
     if (path.startsWith('/cabinet/paths')) {
-      return answer(200, JSON.stringify(treeOf(here.slips, true)))
+      for (const landed of here.fetching) {
+        const leaf = here.slips[landed]
+        if (leaf !== undefined) here.slips[landed] = { ...leaf, isHeld: true }
+      }
+      here.fetching.clear()
+      const tree = under(treeOf(here.slips, true), path.slice('/cabinet/paths'.length))
+
+      return answer(200, JSON.stringify(tree))
     }
     if (path.startsWith('/cabinet/drawer')) {
       const tree = under(treeOf(here.slips, false), path.slice('/cabinet/drawer'.length))

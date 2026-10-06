@@ -1,5 +1,5 @@
-// ship: our view of an urbit ship. logs in to eyre and scries the
-// chorus agent. knows nothing about where slips end up on disk
+// ship: our view of an urbit ship. logs in to eyre, scries the chorus
+// agent and pokes it. knows nothing about where slips end up on disk
 
 import type { HttpInit, HttpResponse } from 'claude-code'
 
@@ -21,6 +21,21 @@ export type Slip = {
   fqsp: string
   text: string
 }
+
+// one slip as the ship lists it, at its cabinet tree path. a ship
+// hears who wrote a slip and where before it holds the text
+export type Listed = {
+  path: string
+  // the author's @p
+  ship: string
+  fqsp: string
+  // whether the ship holds the slip's text: its own always, another
+  // author's once the ship has fetched it
+  isHeld: boolean
+}
+
+// slips to fetch: one author's, at a cabinet path and under it
+export type Ask = { drawer: string; ship: string }
 
 // the ship refused the cookie, or the code
 export class Unauthorized extends Error {
@@ -151,21 +166,52 @@ export async function scry(fetch: Fetch, ship: Ship, path: string): Promise<unkn
   }
 }
 
-// every slip under one drawer of the cabinet
+// every slip under one drawer of the cabinet whose text the ship holds
 export async function drawer(fetch: Fetch, ship: Ship, path: string): Promise<Slip[]> {
   const root = path === '/' ? '' : path
   const out: Slip[] = []
-  walk(await scry(fetch, ship, `/cabinet/drawer${root}`), root, out)
+  walk(await scry(fetch, ship, `/cabinet/drawer${root}`), root, out, slipOf)
 
   return out
 }
 
-// every slip in the cabinet, its text blanked
-export async function paths(fetch: Fetch, ship: Ship): Promise<Slip[]> {
-  const out: Slip[] = []
-  walk(await scry(fetch, ship, '/cabinet/paths'), '', out)
+// every slip the ship lists under one drawer of the cabinet, held or
+// not
+export async function listing(fetch: Fetch, ship: Ship, path: string): Promise<Listed[]> {
+  const root = path === '/' ? '' : path
+  const out: Listed[] = []
+  walk(await scry(fetch, ship, `/cabinet/paths${root}`), root, out, listedOf)
 
   return out
+}
+
+// ask the ship to fetch slips from their authors. the ship fetches in
+// its own time and keeps what it gets, so the texts show in a later
+// read of the drawer. .channel names an eyre channel nobody else
+// uses; it carries the pokes and closes behind them
+export async function ask(
+  fetch: Fetch,
+  ship: Ship,
+  asks: readonly Ask[],
+  channel: string,
+): Promise<void> {
+  if (asks.length === 0) return
+  const our = nameOf(ship.cookie).slice(1)
+  const pokes = asks.map((one, n) => ({
+    id: n + 1,
+    action: 'poke',
+    ship: our,
+    app: 'chorus',
+    mark: 'chorus-fetch',
+    json: { drawer: one.drawer, ships: [one.ship] },
+  }))
+  const res = await fetch(`${ship.url}/~/channel/${channel}`, {
+    method: 'PUT',
+    headers: { cookie: ship.cookie, 'content-type': 'application/json' },
+    body: JSON.stringify([...pokes, { id: pokes.length + 1, action: 'delete' }]),
+  })
+  if (res.status === 401 || res.status === 403) throw new Unauthorized()
+  if (!res.ok) throw new BadResponse(`status ${res.status} for the fetch`)
 }
 
 // the nym the ship credits an author with: one-dot if the ship finds
@@ -178,21 +224,38 @@ export async function nym(fetch: Fetch, ship: Ship, who: string): Promise<string
   return value
 }
 
-// flatten the cabinet mark's nested json: {slip, dir: {segment: tree}}
-export function walk(tree: unknown, path: string, out: Slip[]): void {
+// flatten the cabinet marks' nested json: {slip, dir: {segment: tree}}.
+// .leaf reads the slip at a node
+export function walk<T>(
+  tree: unknown,
+  path: string,
+  out: T[],
+  leaf: (value: unknown, path: string) => T,
+): void {
   if (!isRecord(tree)) throw new BadResponse('a cabinet that is no tree')
   // a node that holds no slip gives null
-  if (tree.slip !== null && tree.slip !== undefined) out.push(slipOf(tree.slip, path))
+  if (tree.slip !== null && tree.slip !== undefined) out.push(leaf(tree.slip, path))
   if (!isRecord(tree.dir)) return
   for (const [segment, kid] of Object.entries(tree.dir)) {
     // the ship holds a segment to these letters, and a split names a
     // ship. a path becomes a file name, so hold it to them here too
     if (!/^~?[a-z0-9-]+$/.test(segment)) throw new BadSlip(`${path}/${segment}`)
-    walk(kid, `${path}/${segment}`, out)
+    walk(kid, `${path}/${segment}`, out, leaf)
   }
 }
 
-function slipOf(value: unknown, path: string): Slip {
+// a slip as the ship lists it. an agent from before a ship could list
+// a slip without its text says nothing of .held, and held them all
+export function listedOf(value: unknown, path: string): Listed {
+  if (!isRecord(value)) throw new BadSlip(path)
+  const { ship, fqsp, held } = value
+  if (typeof ship !== 'string' || typeof fqsp !== 'string') throw new BadSlip(path)
+  if (held !== undefined && typeof held !== 'boolean') throw new BadSlip(path)
+
+  return { path, ship, fqsp, isHeld: held ?? true }
+}
+
+export function slipOf(value: unknown, path: string): Slip {
   if (!isRecord(value)) throw new BadSlip(path)
   const { ship, created, fqsp, text } = value
   if (
