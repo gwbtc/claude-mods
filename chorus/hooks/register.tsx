@@ -117,29 +117,29 @@ async function claudeDir($: EngineInterface): Promise<string> {
   return (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('HOME')) ?? ''}/.claude`
 }
 
-// the session cookies we hold, by ship url. a cookie logs in to the
+// the sessions we hold, by ship url. a cookie logs in to the
 // ship, so the jar sits in a folder only the user can open; the
 // plugin's own store is a file anyone on the machine can read
 async function jarPath($: EngineInterface): Promise<string> {
   return `${await claudeDir($)}/${JAR}`
 }
 
-async function cookies($: EngineInterface): Promise<Record<string, string>> {
+async function sessions($: EngineInterface): Promise<Record<string, Ship>> {
   const path = await jarPath($)
   if (!(await $.fs.exists(path))) return {}
 
   return parseJar(await $.fs.read(path))
 }
 
-// keep a ship's cookie, or forget it
-async function keep($: EngineInterface, url: string, cookie: string | null): Promise<void> {
+// keep a ship's session, or forget it
+async function keep($: EngineInterface, url: string, ship: Ship | null): Promise<void> {
   const path = await jarPath($)
   const dir = path.slice(0, path.lastIndexOf('/'))
-  const { [url]: old, ...rest } = await cookies($)
-  if (cookie === old || (cookie === null && old === undefined)) return
+  const { [url]: old, ...rest } = await sessions($)
+  if (ship?.url === old?.url && ship?.cookie === old?.cookie) return
   await $.process.run(['mkdir', '-p', dir])
   await $.process.run(['chmod', '700', dir])
-  await $.fs.write(path, serializeJar(cookie === null ? rest : { ...rest, [url]: cookie }))
+  await $.fs.write(path, serializeJar(ship === null ? rest : { ...rest, [url]: ship }))
 }
 
 // the project's config, or one with no drawers for a project that has
@@ -160,10 +160,10 @@ async function relogin($: EngineInterface, options: PluginOptions, config: Confi
   const code = codeFor(options, url)
   await keep($, url, null)
   if (code === null) throw new Unauthorized()
-  const cookie = await login(fetchOf($), url, code)
-  await keep($, url, cookie)
+  const ship = await login(fetchOf($), url, code)
+  await keep($, url, ship)
 
-  return { url, cookie }
+  return ship
 }
 
 // the ship with the cookie we hold for it; null when the plugin has
@@ -175,8 +175,8 @@ async function connect(
 ): Promise<Ship | null> {
   const url = shipUrl(options, config)
   if (url === '') return null
-  const cookie = (await cookies($))[url]
-  if (cookie !== undefined) return { url, cookie }
+  const held = (await sessions($))[url]
+  if (held !== undefined) return held
   if (codeFor(options, url) === null) return null
 
   return relogin($, options, config)

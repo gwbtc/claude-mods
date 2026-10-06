@@ -3,13 +3,13 @@
 
 import { describe, expect, test } from 'claude-code/testing'
 
-import { drawerFor, isTrusted, parse, standing, tidy, trust, untrust } from '../hooks/config'
+import { drawerFor, isTrusted, parse, parseJar, standing, tidy, trust, untrust } from '../hooks/config'
 import { describe as summarize, mergeIndex, plan, render, rewriteLinks, HEADING, NOTE } from '../hooks/memory'
 import type { Entry } from '../hooks/memory'
 import { foreshorten, nameOf, names, show } from '../hooks/nym'
 import { authorsOf, countsOf, filter, logical, pathsOf } from '../hooks/paths'
-import { BadSlip, walk } from '../hooks/ship'
-import type { Slip } from '../hooks/ship'
+import { BadResponse, BadSlip, Unauthorized, login, walk } from '../hooks/ship'
+import type { Fetch, Slip } from '../hooks/ship'
 
 function entry(path: string, ship: string, text: string): Entry {
   return { nym: '..abet.baboon', slip: { path, ship, created: '~2026.9.17', fqsp: '', text } }
@@ -100,6 +100,16 @@ describe('config', () => {
       { path: '/a', who: ['~zod'] },
       { path: '/a/c', who: [] },
     ])
+  })
+})
+
+describe('jar', () => {
+  test('a bare cookie from an older jar sits at the url it is under', () => {
+    const jar = parseJar('{"http://a.test": "urbauth-~zod=0v1", "http://b.test": {"url": "https://b.test", "cookie": "urbauth-~bus=0v2"}, "http://c.test": 3}')
+    expect(jar).toEqual({
+      'http://a.test': { url: 'http://a.test', cookie: 'urbauth-~zod=0v1' },
+      'http://b.test': { url: 'https://b.test', cookie: 'urbauth-~bus=0v2' },
+    })
   })
 })
 
@@ -221,6 +231,75 @@ describe('ship', () => {
 
   test('a segment that could leave the folder fails the walk', () => {
     expect(() => walk({ slip: null, dir: { '..': { slip, dir: {} } } }, '', [])).toThrow(BadSlip)
+  })
+
+  const COOKIE = 'urbauth-~zod=0v5.cookie'
+  const answer = (status: number, text = '', headers: Record<string, string> = {}) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers,
+    text,
+  })
+  // a ship at each of .bases, behind whatever .before answers first.
+  // .posted lists where the +code went
+  function eyre(bases: string[], before: (url: string) => ReturnType<typeof answer> | null = () => null) {
+    const posted: string[] = []
+    const fetch: Fetch = async (url, init) => {
+      if (init?.method === 'POST') posted.push(url)
+      const early = before(url)
+      if (early !== null) return early
+      const base = bases.find(one => url.startsWith(`${one}/`))
+      if (base === undefined) throw new Error('connection refused')
+      const path = url.slice(base.length)
+      if (path === '/~/host') return answer(200, '~zod')
+      if (path === '/~/login') {
+        return init?.body === 'password=right'
+          ? answer(204, '', { 'set-cookie': `${COOKIE}; Path=/` })
+          : answer(400, '<html>login</html>')
+      }
+
+      return init?.headers?.cookie === COOKIE ? answer(200, 'null') : answer(403)
+    }
+
+    return { fetch, posted }
+  }
+
+  test('a ship with no https logs in where it is', async () => {
+    const { fetch, posted } = eyre(['http://localhost:8080'])
+    expect(await login(fetch, 'http://localhost:8080', '~right')).toEqual({
+      url: 'http://localhost:8080',
+      cookie: COOKIE,
+    })
+    expect(posted).toEqual(['http://localhost:8080/~/login'])
+  })
+
+  test('an http url gives way to its https twin, and the code goes there alone', async () => {
+    // the host followed a redirect unseen: http answers as the ship does
+    const { fetch, posted } = eyre(['http://ship.test', 'https://ship.test'])
+    expect((await login(fetch, 'http://ship.test', 'right')).url).toBe('https://ship.test')
+    expect(posted).toEqual(['https://ship.test/~/login'])
+  })
+
+  test('a redirect we are shown is followed, on the same host alone', async () => {
+    const to = (location: string) => (url: string) =>
+      url.startsWith('http://ship.test/') ? answer(301, '', { location }) : null
+    const near = eyre(['https://ship.test:8443'], to('https://ship.test:8443/~/host'))
+    expect((await login(near.fetch, 'http://ship.test', 'right')).url).toBe('https://ship.test:8443')
+    expect(near.posted).toEqual(['https://ship.test:8443/~/login'])
+    const far = eyre(['https://else.test'], to('https://else.test/~/host'))
+    await expect(login(far.fetch, 'http://ship.test', 'right')).rejects.toThrow(BadResponse)
+    expect(far.posted).toEqual([])
+  })
+
+  test('a wrong code, or a cookie the ship will not take, is no login', async () => {
+    const { fetch } = eyre(['https://ship.test'])
+    await expect(login(fetch, 'https://ship.test', 'wrong')).rejects.toThrow(Unauthorized)
+    // the scry that tries the cookie is refused
+    const deaf = eyre(['https://ship.test'], url => (url.includes('/~/scry/') ? answer(403) : null))
+    await expect(login(deaf.fetch, 'https://ship.test', 'right')).rejects.toThrow(Unauthorized)
+    // a ship with no chorus to scry still logged us in
+    const bare = eyre(['https://ship.test'], url => (url.includes('/~/scry/') ? answer(404) : null))
+    expect((await login(bare.fetch, 'https://ship.test', 'right')).cookie).toBe(COOKIE)
   })
 })
 

@@ -61,8 +61,8 @@ describe('sync', () => {
     })
     await $.session.start(START)
     // the code minted a cookie, and the jar kept it
-    expect(here.asked[0]).toBe(`${SHIP}/~/login`)
-    expect(JSON.parse(here.files.get(JAR) ?? '')).toEqual({ [SHIP]: COOKIE })
+    expect(here.asked).toContain(`${SHIP}/~/login`)
+    expect(JSON.parse(here.files.get(JAR) ?? '')).toEqual({ [SHIP]: { url: SHIP, cookie: COOKIE } })
     expect(here.files.get(`${MEMORY}/chorus/notes/foo.md`)).toContain('description: "Foo is ours"')
     expect(here.locked.has(`${MEMORY}/chorus/notes/foo.md`)).toBe(true)
     // nobody named the other author

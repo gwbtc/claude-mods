@@ -55,20 +55,84 @@ export function nameOf(cookie: string): string {
   return match[1]
 }
 
-// log in with the ship's +code and return the session cookie pair.
-// eyre answers a wrong code with a 400
-export async function login(fetch: Fetch, url: string, code: string): Promise<string> {
+// eyre names the ship it serves here, to anyone
+const HOST = '/~/host'
+
+// the most redirects we follow to find a ship
+const HOPS = 3
+
+// where the ship takes a login, found without the +code: a mistyped
+// http url must not carry the code in the clear. follows a redirect
+// we are shown; the host follows most unseen, so an http url whose
+// https twin answers as a ship gives way to the twin. a ship with no
+// https, such as one on localhost, keeps its url
+export async function locate(fetch: Fetch, url: string): Promise<string> {
+  let at = url
+  for (let hop = 0; ; hop++) {
+    const res = await fetch(`${at}${HOST}`)
+    if (res.status < 300 || res.status >= 400) break
+    if (hop === HOPS) throw new BadResponse('too many redirects')
+    at = moved(at, res.headers.location)
+  }
+  const twin = at.replace(/^http:/i, 'https:')
+  if (twin !== at && (await isShip(fetch, twin))) return twin
+
+  return at
+}
+
+async function isShip(fetch: Fetch, url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${url}${HOST}`)
+
+    return res.ok && /^~[a-z-]+$/.test(res.text.trim())
+  } catch {
+    return false
+  }
+}
+
+// the base url a redirect sends us to. the +code goes where this
+// says, so it must be the same host, and never https turned to http
+function moved(from: string, location: string | undefined): string {
+  const here = new URL(`${from}${HOST}`)
+  const there =
+    location !== undefined && URL.canParse(location, here.href) ? new URL(location, here.href) : null
+  if (
+    there === null ||
+    there.hostname !== here.hostname ||
+    !there.pathname.endsWith(HOST) ||
+    (here.protocol === 'https:' && there.protocol !== 'https:')
+  ) {
+    throw new BadResponse(`a redirect to ${location ?? 'nowhere'}`)
+  }
+
+  return `${there.origin}${there.pathname.slice(0, -HOST.length)}`
+}
+
+// log in with the ship's +code, at the url the ship takes it, and
+// return the ship once a scry shows the cookie works there. eyre
+// answers a wrong code with a 400
+export async function login(fetch: Fetch, url: string, code: string): Promise<Ship> {
+  const at = await locate(fetch, url)
   const password = encodeURIComponent(code.trim().replace(/^~/, ''))
-  const res = await fetch(`${url}/~/login`, {
+  const res = await fetch(`${at}/~/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: `password=${password}`,
   })
-  if (!res.ok) throw new Unauthorized()
+  if (res.status >= 400 && res.status < 500) throw new Unauthorized()
+  if (!res.ok) throw new BadResponse(`status ${res.status} for the login`)
   const cookie = /urbauth-~[a-z-]+=[^;,\s]+/.exec(res.headers['set-cookie'] ?? '')
   if (cookie === null) throw new Unauthorized()
+  const ship = { url: at, cookie: cookie[0] }
+  try {
+    await nym(fetch, ship, nameOf(ship.cookie))
+  } catch (err) {
+    // only a refusal condemns the cookie: a ship that cannot answer
+    // the scry may still have logged us in
+    if (err instanceof Unauthorized) throw err
+  }
 
-  return cookie[0]
+  return ship
 }
 
 // scry the chorus agent for json. eyre answers a stale session with a

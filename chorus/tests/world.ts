@@ -152,6 +152,7 @@ export function world(
     const answer = (status: number, text: string, headers: Record<string, string> = {}) => ({
       value: { status, ok: status >= 200 && status < 300, headers, text },
     })
+    if (e.url === `${SHIP}/~/host`) return answer(200, HOST)
     if (e.url === `${SHIP}/~/login`) {
       return e.init?.body === `password=${CODE}`
         ? answer(200, '0v5.cookie', { 'set-cookie': `${COOKIE}; Path=/; Max-Age=604800` })

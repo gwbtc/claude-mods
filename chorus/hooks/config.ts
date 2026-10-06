@@ -180,18 +180,26 @@ export function codeFor(options: Options, url: string): string | null {
 // where the session cookies live, under claude code's own folder
 export const JAR = 'chorus/cookies.json'
 
-// the cookie jar: one session cookie per ship url
-export function parseJar(text: string): Record<string, string> {
+// a session: the cookie, and the url the ship took the login at
+export type Session = { url: string; cookie: string }
+
+// the cookie jar: one session per ship url as the options or the
+// config spell it, which may not be where the ship answers
+export function parseJar(text: string): Record<string, Session> {
   const raw: unknown = JSON.parse(text)
   if (!isRecord(raw)) return {}
-  const out: Record<string, string> = {}
-  for (const [url, cookie] of Object.entries(raw)) {
-    if (typeof cookie === 'string') out[url] = cookie
+  const out: Record<string, Session> = {}
+  for (const [url, held] of Object.entries(raw)) {
+    // a bare cookie is a jar from before the ship's own url was kept
+    if (typeof held === 'string') out[url] = { url, cookie: held }
+    else if (isRecord(held) && typeof held.url === 'string' && typeof held.cookie === 'string') {
+      out[url] = { url: held.url, cookie: held.cookie }
+    }
   }
 
   return out
 }
 
-export function serializeJar(jar: Readonly<Record<string, string>>): string {
+export function serializeJar(jar: Readonly<Record<string, Session>>): string {
   return `${JSON.stringify(jar, null, 2)}\n`
 }

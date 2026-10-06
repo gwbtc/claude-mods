@@ -31,7 +31,9 @@ The mod has two options. Claude Code asks for them when it enables the plugin; c
 | `ship` | where the ship answers HTTP; `http://localhost:8080` by default |
 | `code` | the ship's web login code, from `+code` in the Dojo |
 
-The mod logs in with the code once and keeps the session cookie in `~/.claude/chorus/cookies.json`, in a folder only you can open. If the ship later refuses the cookie, the mod logs in again. If the ship refuses the code, Claude Code shows `chorus: login failed; set a fresh +code in /plugin` once, and the sync rests until you do.
+Before it sends the code, the mod asks the URL which ship it serves. It follows a redirect on the same host, and it moves an `http://` URL to `https://` if the ship answers there; a ship with no HTTPS, such as one on localhost, keeps its URL.
+
+The mod logs in with the code once, tries the cookie with a scry, and keeps the session in `~/.claude/chorus/cookies.json`, in a folder only you can open. It keeps no cookie the ship refuses. If the ship later refuses the cookie, the mod logs in again. If the ship refuses the code, Claude Code shows `chorus: login failed; set a fresh +code in /plugin` once, and the sync rests until you do.
 
 After that the mod says nothing. A session proceeds as it would without it.
 
