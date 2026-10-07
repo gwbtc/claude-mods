@@ -26,6 +26,16 @@ export type Disk = {
   list: (path: string) => Promise<{ name: string; isDir: boolean }[] | null>
 }
 
+// a copy already in the folder that stays as it is: the ship lists a
+// new revision of the slip and has not fetched its text yet
+export type Kept = {
+  path: string
+  // the author's @p, and their nym if they have one
+  ship: string
+  nym: string | null
+  text: string
+}
+
 export const FOLDER = 'chorus'
 export const HEADING = '## Chorus (synced, read-only)'
 export const NOTE =
@@ -54,9 +64,24 @@ type IndexLine = {
 
 // what <memory>/chorus and the chorus section of MEMORY.md should
 // hold for a synced set
-export function plan(entries: readonly Entry[], our: string, drawers: readonly string[]): Plan {
+export function plan(
+  entries: readonly Entry[],
+  our: string,
+  drawers: readonly string[],
+  kept: readonly Kept[] = [],
+): Plan {
   const files = new Map<string, string>()
   const lines: IndexLine[] = []
+  for (const copy of kept) {
+    const rel = `${FOLDER}${copy.path}.md`
+    files.set(rel, copy.text)
+    lines.push({
+      path: copy.path,
+      rel,
+      author: copy.ship === our ? null : (copy.nym ?? copy.ship),
+      description: describedAs(copy.text),
+    })
+  }
   for (const entry of entries) {
     const rel = `${FOLDER}${entry.slip.path}.md`
     const body = rewriteLinks(entry.slip.text, entries)
@@ -142,6 +167,13 @@ export function describe(text: string): string {
   const word = head.lastIndexOf(' ')
 
   return (word > 0 ? head.slice(0, word) : head).replace(/[ ,:]+$/, '')
+}
+
+// the description a copy's frontmatter gives, as render wrote it
+export function describedAs(file: string): string {
+  const match = /\ndescription: "((?:[^"\\]|\\.)*)"\n/.exec(file)
+
+  return (match?.[1] ?? '').replace(/\\(["\\])/g, '$1')
 }
 
 // where the first sentence stops: at a semicolon, or at a full stop

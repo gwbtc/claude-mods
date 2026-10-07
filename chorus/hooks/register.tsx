@@ -42,8 +42,8 @@ const POLL_MS = 60_000
 // how long a change waits for the next before the sync runs
 const SETTLE_MS = 500
 // how long the ship gets to fetch the slips we asked for before we
-// look again
-const FETCH_MS = 5000
+// look again, doubled at each look that finds it still fetching
+const LOOK_MS = 2000
 
 const DENY =
   'This memory is a read-only copy of a chorus slip. ' +
@@ -99,12 +99,16 @@ let isRefused = false
 let pending: { cancel: () => void } | undefined
 // the early look at what the ship has fetched
 let looking: { cancel: () => void } | undefined
+// the minute's sync
+let poll: { cancel: () => void } | undefined
 // where each trusted slip stood at the last sync
 const seen: Seen = new Map()
-// the slips the ship lacked when we last looked again early. we look
-// early only while that number moves: a ship that cannot reach an
-// author is left to the poll
+// the slips the ship lacked when we last looked, and how long the
+// next look waits. a look that finds the same slips lacking waits
+// twice as long as the last; a ship that cannot reach an author is
+// left to the poll once the wait would outlast it
 let awaited = 0
+let look = LOOK_MS
 // counts the eyre channels we open, so no two share a name
 let channels = 0
 // counts the searches, so a slow one cannot overwrite a later one
@@ -297,6 +301,8 @@ async function run($: EngineInterface, options: PluginOptions): Promise<void> {
     if (config.drawers.length === 0) {
       seen.clear()
       awaited = 0
+      look = LOOK_MS
+      looking?.cancel()
       for (const line of await clear(diskOf($), memory)) $.ui.log(line, { to: 'debug' })
     } else {
       const now = await $.clock.now()
@@ -307,9 +313,16 @@ async function run($: EngineInterface, options: PluginOptions): Promise<void> {
       for (const line of [...(report?.notes ?? []), ...(report?.changes ?? [])]) {
         $.ui.log(line, { to: 'debug' })
       }
-      // the ship is fetching: look again soon, while slips keep landing
+      // the ship is fetching: look again soon, and back off while
+      // nothing lands. a fresh ask, or a slip that landed, starts over
       const lacking = report?.lacking ?? 0
-      if (lacking > 0 && lacking !== awaited) later($, options)
+      if (lacking === 0) {
+        look = LOOK_MS
+        looking?.cancel()
+      } else {
+        look = (report?.asked ?? 0) > 0 || lacking !== awaited ? LOOK_MS : look * 2
+        if (look < POLL_MS) later($, options, look)
+      }
       awaited = lacking
     }
   } catch (err) {
@@ -336,9 +349,9 @@ function soon($: EngineInterface, options: PluginOptions): void {
 }
 
 // sync once the ship has had time to fetch what we asked for
-function later($: EngineInterface, options: PluginOptions): void {
+function later($: EngineInterface, options: PluginOptions, ms: number): void {
   looking?.cancel()
-  looking = $.clock.after(FETCH_MS, () => run($, options))
+  looking = $.clock.after(ms, () => run($, options))
 }
 
 //  the pane
@@ -530,7 +543,16 @@ export const register: Register = (on, options) => {
     })
     // make the folder and the index current before the first prompt
     await run($, options)
-    $.clock.every(POLL_MS, () => run($, options))
+    poll = $.clock.every(POLL_MS, () => run($, options))
+
+    return next(e)
+  })
+
+  // the timers go with the session
+  on('session.end', ($, e, next) => {
+    poll?.cancel()
+    pending?.cancel()
+    looking?.cancel()
 
     return next(e)
   })

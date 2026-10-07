@@ -81,7 +81,11 @@ A slip syncs if the deepest drawer holding its path names its author. Nobody syn
 
 The mod syncs when a session starts, every minute after, when `/cabinet` changes a drawer, and when Claude publishes or discards a slip. It writes each slip to `<memory>/chorus/<path>.md`, read-only, and lists them under `## Chorus (synced, read-only)` at the end of `MEMORY.md`. It denies `Edit` and `Write` on the copies. The ship holds the truth: a slip that leaves the ship, or loses its drawer, leaves the folder.
 
-A ship lists another author's slip, with its path and author, before it holds the text. The pane lists every slip the ship knows of. When a trusted author's slip has no text on the ship yet, the mod pokes the agent with `%chorus-fetch`; the ship fetches the slip from its author and keeps it from then on. The mod looks again five seconds later, and keeps looking while slips arrive. A slip the ship cannot fetch is asked for again at each minute's sync. None of this shows in the session.
+A ship lists another author's slip, with its path and author, before it holds the text. The pane lists every slip the ship knows of. When a trusted author's slip has no text on the ship yet, the mod pokes the agent with `%chorus-fetch`; the ship fetches the slip from its author and keeps it from then on. The mod looks again two seconds later, then four, eight, sixteen and thirty-two, until the text lands or the minute's sync takes over. A slip the ship cannot fetch is asked for again at each minute's sync. None of this shows in the session.
+
+A revised slip is listed at its new revision before the ship holds the new text. The old copy stays in memory until the new one lands.
+
+An ask names an author and a path, and the ship fetches that author's slips at the path and under it, in a deeper drawer that leaves the author unnamed too. Those texts stay on the ship and never reach memory. Trust travels down the tree, not up.
 
 The mechanics go to the debug log (`claude --debug`), not to the transcript, so a slip's text never lands in Claude's context unasked:
 
@@ -90,6 +94,7 @@ The mechanics go to the debug log (`claude --debug`), not to the transcript, so 
 | `held: <path> by <ship>, in the ship's cache` | the ship already had the text of a trusted slip |
 | `fetch: asked the ship for <path> from <ship>` | the mod poked `%chorus-fetch` for it |
 | `arrived: <path> from <ship>` | a slip the mod asked for now has its text |
+| `kept: <path> at its old revision until the new one lands` | the ship lists a new revision it has yet to fetch |
 | `sync: 73 listed, 23 trusted, 23 held, 0 awaited, 0 asked for now` | one sync's count |
 | `<path> added`, `<path> removed` and the like | a copy in the memory folder changed |
 

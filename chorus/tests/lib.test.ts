@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { drawerFor, isTrusted, parse, parseJar, standing, tidy, trust, untrust } from '../hooks/config'
-import { describe as summarize, mergeIndex, plan, render, rewriteLinks, HEADING, NOTE } from '../hooks/memory'
+import { describe as summarize, describedAs, mergeIndex, plan, render, rewriteLinks, HEADING, NOTE } from '../hooks/memory'
 import type { Entry } from '../hooks/memory'
 import { foreshorten, nameOf, names, show } from '../hooks/nym'
 import { authorsOf, countsOf, filter, logical, pathsOf } from '../hooks/paths'
@@ -188,6 +188,20 @@ describe('memory', () => {
       `${HEADING}\n\n${NOTE}\n\n` +
         '- [notes.bar](chorus/notes/bar.md) — ours\n' +
         '- [notes.baz](chorus/notes/baz.md) — .abet.baboon: theirs\n',
+    )
+  })
+
+  test('a kept copy stays as written and keeps its index line', () => {
+    const theirs = { ...entry('/notes/baz', '~bus', 'An "old" one; more.'), nym: '.abet.baboon' }
+    const text = render(theirs, summarize(theirs.slip.text), theirs.slip.text)
+    expect(describedAs(text)).toBe('An "old" one')
+    const kept = { path: '/notes/baz', ship: '~bus', nym: '.abet.baboon', text }
+    const wanted = plan([entry('/notes/bar', '~zod', 'ours')], '~zod', ['/notes'], [kept])
+    expect(wanted.files.get('chorus/notes/baz.md')).toBe(text)
+    expect(wanted.section).toBe(
+      `${HEADING}\n\n${NOTE}\n\n` +
+        '- [notes.bar](chorus/notes/bar.md) — ours\n' +
+        '- [notes.baz](chorus/notes/baz.md) — .abet.baboon: An "old" one\n',
     )
   })
 

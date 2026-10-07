@@ -15,8 +15,9 @@ export const HOST = '~zod'
 export const COOKIE = `urbauth-${HOST}=0v5.cookie`
 export const CODE = 'lidlut-tabwed-pillex-ridrup'
 
-// .isHeld false is a slip the ship lists and lacks the text of
-type Leaf = { ship: string; text: string; isHeld?: boolean }
+// .isHeld false is a slip the ship lists and lacks the text of; .rev
+// is the revision its fqsp names, 1 unless said
+type Leaf = { ship: string; text: string; isHeld?: boolean; rev?: number }
 type Tree = { slip: unknown; dir: Record<string, Tree> }
 
 export type World = {
@@ -52,7 +53,7 @@ function treeOf(slips: Record<string, Leaf>, isBlank: boolean): Tree {
     node.slip = {
       ship: leaf.ship,
       created: '~2026.10.2',
-      fqsp: `/${leaf.ship}/g/x/1/chorus//1/chorus/cabinet${logical}`,
+      fqsp: `/${leaf.ship}/g/x/${leaf.rev ?? 1}/chorus//1/chorus/cabinet${logical}`,
       links: [],
       text: isBlank ? '' : leaf.text,
       ...(isBlank ? { held: leaf.isHeld !== false, digest: '0v1' } : {}),

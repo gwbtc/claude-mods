@@ -140,7 +140,7 @@ describe('sync', () => {
     expect(here.logs).toContain('sync: 4 listed, 3 trusted, 3 held, 0 awaited, 0 asked for now')
   })
 
-  test('a ship that cannot fetch a slip is asked again at the poll, not sooner', { options: OPTIONS }, async ($, on) => {
+  test('a ship that cannot fetch a slip is looked at less and less, and asked again at the poll', { options: OPTIONS }, async ($, on) => {
     const here = world(on, {
       slips: { '/notes/bar': { ship: BUS, text: 'Bar is theirs.', isHeld: false } },
       nyms: NYMS,
@@ -148,14 +148,49 @@ describe('sync', () => {
     })
     here.reaches = false
     await $.session.start(START)
+    const syncs = () => here.logs.filter(line => line.startsWith('sync:')).length
     expect(here.asks.length).toBe(1)
-    // the early look finds nothing new and asks for nothing
-    await here.clock.advance(5000)
-    await here.clock.advance(5000)
+    expect(syncs()).toBe(1)
+    // the looks come at 2, 6, 14 and 30 seconds, and ask for nothing
+    for (const [at, count] of [[2000, 2], [4000, 2], [6000, 3], [14_000, 4], [30_000, 5], [59_000, 5]] as const) {
+      await here.clock.set(at)
+      expect([at, syncs()]).toEqual([at, count])
+    }
     expect(here.asks.length).toBe(1)
-    await here.clock.advance(50_000)
+    // the poll asks again, and the looks start over
+    await here.clock.set(60_000)
     expect(here.asks.length).toBe(2)
+    expect(syncs()).toBe(6)
+    await here.clock.set(62_000)
+    expect(syncs()).toBe(7)
     expect(here.files.has(`${MEMORY}/chorus/notes/bar.md`)).toBe(false)
+  })
+
+  test('a revised slip keeps its old copy until the new text lands', { options: OPTIONS }, async ($, on) => {
+    const here = world(on, {
+      slips: { '/notes/bar': { ship: BUS, text: 'Bar is theirs.' } },
+      nyms: NYMS,
+      files: { [CONFIG]: config([{ path: '/notes', who: [BUS] }]) },
+    })
+    await $.session.start(START)
+    const copy = `${MEMORY}/chorus/notes/bar.md`
+    const old = here.files.get(copy)
+    expect(old).toContain('Bar is theirs.')
+    // the author revised it: the ship lists the new revision and lacks
+    // its text, so the drawer gives nothing for the path
+    here.slips = { '/notes/bar': { ship: BUS, text: 'Bar, revised.', isHeld: false, rev: 2 } }
+    await here.clock.advance(60_000)
+    expect(here.asks.length).toBe(1)
+    expect(here.files.get(copy)).toBe(old)
+    expect(here.files.get(`${MEMORY}/MEMORY.md`)).toContain('- [notes.bar](chorus/notes/bar.md) — ..abet.baboon.caffeine.denounce.escape: Bar is theirs\n')
+    expect(here.logs).toContain('kept: /notes/bar at its old revision until the new one lands')
+    expect(here.logs).toContain('sync: 1 listed, 1 trusted, 0 held, 1 awaited, 1 asked for now')
+    // the new text lands at the next look
+    await here.clock.advance(2000)
+    expect(here.files.get(copy)).toContain('Bar, revised.')
+    expect(here.files.get(copy)).toContain('/g/x/2/')
+    expect(here.logs).toContain(`arrived: /notes/bar from ${BUS}`)
+    expect(here.logs).toContain('/notes/bar updated')
   })
 
   test('the copies turn away an edit', { options: OPTIONS }, async ($, on) => {

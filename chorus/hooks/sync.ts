@@ -8,8 +8,8 @@
 
 import { drawerFor, holds, isTrusted } from './config'
 import type { Drawer } from './config'
-import { apply, plan } from './memory'
-import type { Disk, Entry } from './memory'
+import { FOLDER, apply, plan } from './memory'
+import type { Disk, Entry, Kept } from './memory'
 import { logical } from './paths'
 import * as urbit from './ship'
 import type { Ask, Fetch, Listed, Ship, Slip } from './ship'
@@ -40,6 +40,8 @@ export type Report = {
   notes: string[]
   // the trusted slips the ship does not hold yet
   lacking: number
+  // the slips the ship was asked to fetch this time
+  asked: number
 }
 
 // read every configured drawer afresh, ask the ship for the trusted
@@ -67,6 +69,7 @@ export async function sync(deps: Deps, drawers: readonly Drawer[], seen: Seen): 
 
   const notes: string[] = []
   const asks: Ask[] = []
+  const askedNow = new Set<string>()
   for (const one of trusted) {
     const was = seen.get(one.fqsp)
     if (one.isHeld) {
@@ -77,6 +80,7 @@ export async function sync(deps: Deps, drawers: readonly Drawer[], seen: Seen): 
       notes.push(`fetch: asked the ship for ${one.path} from ${one.ship}`)
       // a split sits under the path its author published to
       asks.push({ drawer: logical(one.path), ship: one.ship })
+      askedNow.add(one.fqsp)
       seen.set(one.fqsp, { state: 'asked', at: deps.now })
     }
   }
@@ -89,11 +93,22 @@ export async function sync(deps: Deps, drawers: readonly Drawer[], seen: Seen): 
     for (const slip of await urbit.drawer(fetch, ship, root.path)) slips.set(slip.path, slip)
   }
   const entries: Entry[] = []
+  const kept: Kept[] = []
   for (const one of trusted) {
     const slip = slips.get(one.path)
+    const nym = nyms.get(one.ship) ?? null
     // the revision listed, not one the ship held before it
-    if (slip === undefined || slip.fqsp !== one.fqsp) continue
-    entries.push({ slip, nym: nyms.get(slip.ship) ?? null })
+    if (slip !== undefined && slip.fqsp === one.fqsp) {
+      entries.push({ slip, nym })
+      continue
+    }
+    // a copy of an older revision stays until the new one lands
+    const text = await deps.disk.read(`${deps.memory}/${FOLDER}${one.path}.md`)
+    if (text === null) continue
+    kept.push({ path: one.path, ship: one.ship, nym, text })
+    if (askedNow.has(one.fqsp)) {
+      notes.push(`kept: ${one.path} at its old revision until the new one lands`)
+    }
   }
   const lacking = trusted.length - entries.length
   notes.push(
@@ -101,9 +116,9 @@ export async function sync(deps: Deps, drawers: readonly Drawer[], seen: Seen): 
       `${lacking} awaited, ${asks.length} asked for now`,
   )
 
-  const made = plan(entries, our, drawers.map(drawer => drawer.path))
+  const made = plan(entries, our, drawers.map(drawer => drawer.path), kept)
 
-  return { changes: await apply(deps.disk, deps.memory, made), notes, lacking }
+  return { changes: await apply(deps.disk, deps.memory, made), notes, lacking, asked: asks.length }
 }
 
 // take every copy out of the memory folder, for a project that syncs
